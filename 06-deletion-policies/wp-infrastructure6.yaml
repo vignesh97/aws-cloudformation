@@ -60,7 +60,7 @@ Mappings:
 Resources:
   DB:
     Type: "AWS::RDS::DBInstance"
-    DeletionPolicy: Delete
+    DeletionPolicy: Snapshot
     Properties:
       AllocatedStorage: 5
       StorageType: gp2      
