@@ -26,6 +26,8 @@ Conditions:
     !Equals [!Ref EnvironmentSize, "LARGE"]
   isntLarge:
     !Not [!Equals [!Ref EnvironmentSize, "LARGE"]]
+  isRestore:
+    !Not [!Equals [!Ref SnapToRestore, ""]]
 Mappings:
   RegionMap:
     us-east-1:
@@ -74,10 +76,10 @@ Resources:
       AllocatedStorage: 5
       StorageType: gp2
       DBInstanceClass: !FindInMap [InstanceSize, !Ref EnvironmentSize, DB] # Dynamic mapping + Pseudo Parameter
-      DBName: !Ref DatabaseName
+      DBName: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabaseName]
       Engine: MySQL
-      MasterUsername: !Ref DatabaseUser
-      MasterUserPassword: !Ref DatabasePassword
+      MasterUsername: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabaseUser]
+      MasterUserPassword: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabasePassword]
       DBSnapshotIdentifier: !Ref SnapToRestore
   EC2:
     Type: "AWS::EC2::Instance"
