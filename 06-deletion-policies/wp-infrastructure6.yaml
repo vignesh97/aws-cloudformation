@@ -164,4 +164,4 @@ Resources:
                 sed -i 's/password_here/${DatabasePassword}/g' wp-config.php
   S3:
     Type: "AWS::S3::Bucket"
-    DeletionPolicy: Delete
+    DeletionPolicy: Retain
