@@ -67,10 +67,11 @@ Mappings:
       "DB" : "db.t2.small"
     LARGE:
       "EC2" : "t2.medium"
-      "DB" : "db.t2.medium"
+      "DB" : "db.r3.xlarge"
 Resources:
   DB:
     Type: "AWS::RDS::DBInstance"
+    Condition: isntLarge # added - only create the MySQL DB if its small/med
     DeletionPolicy: Snapshot
     Properties:
       AllocatedStorage: 5
@@ -78,9 +79,27 @@ Resources:
       DBInstanceClass: !FindInMap [InstanceSize, !Ref EnvironmentSize, DB] # Dynamic mapping + Pseudo Parameter
       DBName: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabaseName]
       Engine: MySQL
+      StorageType: gp2
       MasterUsername: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabaseUser]
       MasterUserPassword: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabasePassword]
-      DBSnapshotIdentifier: !Ref SnapToRestore
+      DBSnapshotIdentifier: !If [isRestore, !Ref SnapToRestore, !Ref "AWS::NoValue"]
+  DBAuroraCluster:
+    Type: "AWS::RDS::DBCluster"
+    DeletionPolicy: Snapshot
+    Condition: isLarge # only create if its a large EnvironmentSize
+    Properties:
+      DatabaseName: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabaseName]
+      Engine: aurora
+      MasterUsername: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabaseUser]
+      MasterUserPassword: !If [isRestore, !Ref "AWS::NoValue", !Ref DatabasePassword]
+      SnapshotIdentifier: !If [isRestore, !Ref SnapToRestore, !Ref "AWS::NoValue"]
+  DBAurora:
+    Type : "AWS::RDS::DBInstance"
+    Condition: isLarge # only create if its a large EnvironmentSize
+    Properties:
+      DBClusterIdentifier: !Ref DBAuroraCluster
+      Engine: aurora
+      DBInstanceClass: !FindInMap [InstanceSize, !Ref EnvironmentSize, DB]
   EC2:
     Type: "AWS::EC2::Instance"
     DeletionPolicy: Delete
@@ -160,8 +179,12 @@ Resources:
               command: "cp wp-config-sample.php wp-config.php"
             02_inject_dbhost:
               cwd: "/var/www/html/wordpress"
-              command: !Sub |
-                sed -i 's/localhost/${DB.Endpoint.Address}/g' wp-config.php
+              command: !If
+                - isntLarge
+                - !Sub |
+                  sed -i 's/localhost/${DB.Endpoint.Address}/g' wp-config.php
+                - !Sub |
+                  sed -i 's/localhost/${DBAuroraCluster.Endpoint.Address}/g' wp-config.php
             03_inject_dbname:
               cwd: "/var/www/html/wordpress"
               command: !Sub |
@@ -174,6 +197,25 @@ Resources:
               cwd: "/var/www/html/wordpress"
               command: !Sub |
                 sed -i 's/password_here/${DatabasePassword}/g' wp-config.php
+            06_store_instance_ip:
+              cwd: "/var/www/html/wordpress"
+              command: "curl http://169.254.169.254/latest/meta-data/public-ipv4 > ip.address"
+            07a_inject_IP_1: # this allows a restore & change of IP without causing WP errors.
+              cwd: "/var/www/html/wordpress"
+              command: !Sub |
+                myip=`cat ip.address` && echo "define('WP_SITEURL', 'http://${!myip}/wordpress');" >> wp-config.php
+            07b_inject_IP_2: # this allows a restore & change of IP without causing WP errors.
+              cwd: "/var/www/html/wordpress"
+              command: !Sub |
+                myip=`cat ip.address` && echo "define('WP_HOME', 'http://${!myip}/wordpress');" >> wp-config.php
+            08a_update_theme_1:
+              cwd: "/var/www/html/wordpress"
+              command: !Sub |
+                myip=`cat ip.address` && echo "update_option('siteurl','http://${!myip}/wordpress');" >> /var/www/html/wordpress/wp-content/themes/twentyseventeen/functions.php
+            08a_update_theme_2:
+              cwd: "/var/www/html/wordpress"
+              command: !Sub |
+                myip=`cat ip.address` && echo "update_option('home','http://${!myip}/wordpress');" >> /var/www/html/wordpress/wp-content/themes/twentyseventeen/functions.php
   S3:
     Type: "AWS::S3::Bucket"
-    DeletionPolicy: Retain
+    #DeletionPolicy: Retain
