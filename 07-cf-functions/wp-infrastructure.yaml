@@ -218,4 +218,11 @@ Resources:
                 myip=`cat ip.address` && echo "update_option('home','http://${!myip}/wordpress');" >> /var/www/html/wordpress/wp-content/themes/twentyseventeen/functions.php
   S3:
     Type: "AWS::S3::Bucket"
-    #DeletionPolicy: Retain
+    DeletionPolicy: Retain
+Outputs:
+  wproot:
+    Description: Access URL for wordpress
+    Value: !Join ["", ["http://", !GetAtt EC2.PublicIp, "/wordpress"]]
+  wpadmin:
+    Description: Admin Login URL - if restoring from snap, always go to this URL first
+    Value: !Join ["", ["http://", !GetAtt EC2.PublicIp, "/wordpress/wp-login.php"]]
